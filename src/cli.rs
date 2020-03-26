@@ -1,54 +1,31 @@
 
 
 use clap::Clap;
-use cheap_alerts::{Carrier, Sender, Error};
-use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
+use cheap_alerts::{Carrier, Sender, Error, Destination};
 
-#[derive(Clap)]
+#[derive(Clap, Debug)]
 #[clap(version = "0.1", author = "FreeMasen")]
 pub struct Opts {
     #[clap(short = "c", long = "carrier")]
     pub carrier: Carrier,
     #[clap(short = "n", long = "number")]
     pub number: String,
-    #[clap(short = "m", long = "message")]
-    pub message: String,
-    pub config_path: Option<PathBuf>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct Config {
+    #[clap(short = "d", long = "domain")]
+    pub domain: Option<String>,
+    #[clap(short = "f", long = "from")]
     pub from: String,
-    pub transport: Transport,
+    pub message: String,
 }
 
-#[derive(Deserialize, Serialize)]
-pub enum Transport {
-    File { path: PathBuf },
-    SendMail,
-    StmpLocalHost,
-    StmpSimple { domain: String },
-}
-
-impl Config {
-    fn into_sender<'a, R>(self) -> Result<Sender<'a, R>, Error> {
-        let b = Sender::builder().address(&self.from);
-        let ret = match  self.transport {
-            Transport::File { path } => {
-                b.file(path)
-            },
-            Transport::SendMail => {
-                b.sendmail()
-            },
-            Transport::StmpLocalHost => {
-                b.smtp_unencrypted_localhost()
-            },
-            Transport::StmpSimple { domain } => {
-                let ret = b.smtp_simple(&domain)
-            },
-        };
-
-        Ok(ret)
-    }
+pub fn send_message(opts: &Opts) -> Result<(), Error> {
+    let builder = Sender::builder()
+        .address(&opts.from);
+    let mut sender = if let Some(domain) = &opts.domain {
+        builder.smtp_simple(domain)?
+    } else {
+        builder.smtp_unencrypted_localhost()?
+    };
+    let dest = Destination::new(&opts.number, &opts.carrier);
+    sender.send_to(&dest, &opts.message)?;
+    Ok(())
 }

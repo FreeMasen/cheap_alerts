@@ -146,17 +146,17 @@ impl<'a> Sender<'a, ()> {
     }
 }
 
-impl<'a, E> Sender<'a, Result<(), E>>
+impl<'a, R, E> Sender<'a, Result<R, E>>
 where
     E: Into<Error>,
 {
-    pub fn send_to(&mut self, dest: &Destination, msg: &str) -> Result<(), Error> {
+    pub fn send_to(&mut self, dest: &Destination, msg: &str) -> Result<R, Error> {
         let to = EmailAddress::new(dest.address())?;
         let from = self.address.clone();
         let env = Envelope::new(Some(from), vec![to])?;
         let email = SendableEmail::new(env, Utc::now().to_rfc2822(), msg.as_bytes().to_vec());
         match self.client.send(email) {
-            Ok(_) => Ok(()),
+            Ok(r) => Ok(r),
             Err(e) => Err(e.into()),
         }
     }
@@ -169,6 +169,7 @@ where
 /// > well. The `Other` case will allow for
 /// > you to extend this enum with anything
 /// > not currently provided
+#[derive(Debug, Clone)]
 pub enum Carrier {
     /// [number]@txt.att.net
     ATT,
@@ -219,6 +220,7 @@ impl std::str::FromStr for Carrier {
 /// mobile carrier pair
 /// for sending a text
 /// message
+#[derive(Debug)]
 pub struct Destination {
     pub number: String,
     pub carrier: Carrier,
@@ -230,9 +232,9 @@ impl Destination {
     /// carrier. The phone number provided
     /// will have all not decimal digits
     /// stripped from it (It is not validated in any way).
-    pub fn new(number: &str, carrier: Carrier) -> Self {
+    pub fn new(number: &str, carrier: &Carrier) -> Self {
         let number = number.chars().filter(|c| c.is_digit(10)).collect();
-        Self { number, carrier }
+        Self { number, carrier: carrier.clone() }
     }
 
     pub fn address(&self) -> String {
