@@ -3,8 +3,14 @@
 //! dirty way to send out notifications
 //! (and you have access to an email server),
 //! this crate is for you!
-use lettre::{EmailAddress, Transport, Envelope, SendableEmail};
 use chrono::prelude::*;
+use lettre::{
+    file::error::FileResult, sendmail::error::SendmailResult, smtp::error::SmtpResult,
+    EmailAddress, Envelope, FileTransport, SendableEmail, SmtpTransport, Transport,
+};
+
+pub use lettre::smtp::{client::net::ClientTlsParameters, ClientSecurity, SmtpClient};
+use std::net::ToSocketAddrs;
 
 #[derive(Debug)]
 pub enum Error {
@@ -53,66 +59,76 @@ impl From<lettre::smtp::error::Error> for Error {
     }
 }
 
+/// A builder for easily
+/// creating a `Sender`
 pub struct SenderBuilder {
     pub(crate) address: Option<EmailAddress>,
 }
 
 impl SenderBuilder {
+    /// Set the address for this sender
+    /// to send from.
+    ///
+    /// > Note: This is required to be used.
     pub fn address(mut self, from: &str) -> Self {
         if let Ok(add) = EmailAddress::new(from.to_string()) {
             self.address = Some(add);
         }
         self
     }
-    
-    pub fn file<'a, P: AsRef<std::path::Path>>(self, p: P) -> Result<Sender<'a, lettre::file::error::FileResult>, Error> {
-        let client = Box::new(lettre::FileTransport::new(p));
+
+    /// This takes a file path and will write the email
+    /// to a file on the file system as json using
+    pub fn file<'a, P: AsRef<std::path::Path>>(
+        self,
+        p: P,
+    ) -> Result<Sender<'a, FileResult>, Error> {
+        let client = Box::new(FileTransport::new(p));
         if let Some(address) = self.address {
-            Ok(Sender {
-                address,
-                client,
-            })
+            Ok(Sender { address, client })
         } else {
             Err(Error::MissingEmail)
         }
     }
 
-    pub fn sendmail<'a>(self) -> Result<Sender<'a, lettre::sendmail::error::SendmailResult>, Error> {
+    /// This uses the `sendmail` cli tool for sending an email
+    pub fn sendmail<'a>(self) -> Result<Sender<'a, SendmailResult>, Error> {
         let client = Box::new(lettre::SendmailTransport::new());
         if let Some(address) = self.address {
-            Ok(Sender {
-                address,
-                client,
-            })
+            Ok(Sender { address, client })
         } else {
             Err(Error::MissingEmail)
         }
     }
-
-    pub fn smtp_unencrypted_localhost<'a>(self) -> Result<Sender<'a, lettre::smtp::error::SmtpResult>, Error> {
+    /// Unencrypted Localhost, this is by far the simplest, but least secure
+    pub fn smtp_unencrypted_localhost<'a>(self) -> Result<Sender<'a, SmtpResult>, Error> {
         let smtp = lettre::SmtpClient::new_unencrypted_localhost()?;
         self.smtp(smtp)
     }
 
-    pub fn smtp_simple<'a>(self, domain: &str) -> Result<Sender<'a, lettre::smtp::error::SmtpResult>, Error> {
+    /// You provide a domain (as an `&str`) and it will use TLS to send the message
+    pub fn smtp_simple<'a>(self, domain: &str) -> Result<Sender<'a, SmtpResult>, Error> {
         let smtp = lettre::SmtpClient::new_simple(domain)?;
         self.smtp(smtp)
     }
-
-    pub fn smtp_full<A: std::net::ToSocketAddrs>(self, addr: A, security: lettre::smtp::ClientSecurity) -> Result<Sender<'a, lettre::smtp::error::SmtpResult>, Error> {
-        let smtp = lettre::SmtpClient::new(addr, security)?;
+    /// You provide the socket address and security
+    /// see [the lettre documentation to learn more](https://docs.rs/lettre/0.9.2/lettre/smtp/enum.ClientSecurity.html)
+    pub fn smtp_full<'a, A: ToSocketAddrs>(
+        self,
+        addr: A,
+        security: ClientSecurity,
+    ) -> Result<Sender<'a, SmtpResult>, Error> {
+        let smtp = SmtpClient::new(addr, security)?;
         self.smtp(smtp)
     }
 
-    pub fn smtp<'a>(self, smtp: lettre::SmtpClient) -> Result<Sender<'a, lettre::smtp::error::SmtpResult>, Error> {
-        let client = Box::new(lettre::SmtpTransport::new(
-            smtp
-        ));
+    /// The most manual method, you need to provide
+    /// the fully constructed client
+    /// see [the lettre documentation to learn more](https://docs.rs/lettre/0.9.2/lettre/smtp/struct.SmtpClient.html)
+    pub fn smtp<'a>(self, smtp: SmtpClient) -> Result<Sender<'a, SmtpResult>, Error> {
+        let client = Box::new(SmtpTransport::new(smtp));
         if let Some(address) = self.address {
-            Ok(Sender {
-                address,
-                client,
-            })
+            Ok(Sender { address, client })
         } else {
             Err(Error::MissingEmail)
         }
@@ -126,22 +142,19 @@ pub struct Sender<'a, R> {
 
 impl<'a> Sender<'a, ()> {
     pub fn builder() -> SenderBuilder {
-        SenderBuilder {
-            address: None,
-        }
+        SenderBuilder { address: None }
     }
 }
 
-impl<'a, E> Sender<'a, Result<(), E>> 
-where E: Into<Error> {
+impl<'a, E> Sender<'a, Result<(), E>>
+where
+    E: Into<Error>,
+{
     pub fn send_to(&mut self, dest: &Destination, msg: &str) -> Result<(), Error> {
         let to = EmailAddress::new(dest.address())?;
         let from = self.address.clone();
         let env = Envelope::new(Some(from), vec![to])?;
-        let email = SendableEmail::new(env,
-            Utc::now().to_rfc2822(),
-            msg.as_bytes().to_vec()
-        );
+        let email = SendableEmail::new(env, Utc::now().to_rfc2822(), msg.as_bytes().to_vec());
         match self.client.send(email) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
@@ -150,10 +163,10 @@ where E: Into<Error> {
 }
 
 /// A cell phone carrier
-/// 
+///
 /// > Note: this is currently only US providers
 /// > with support, we could include others as
-/// > well. The `Other` case will allow for 
+/// > well. The `Other` case will allow for
 /// > you to extend this enum with anything
 /// > not currently provided
 pub enum Carrier {
@@ -182,7 +195,27 @@ pub enum Carrier {
     Other { domain: String },
 }
 
-/// A phone number and 
+impl std::str::FromStr for Carrier {
+    type Err = Error;
+    /// This should always succeed
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "att" => Self::ATT,
+            "sprint" => Self::Sprint,
+            "tmobile" => Self::TMobile,
+            "verizon" => Self::Verizon,
+            "boost" => Self::BoostMobile,
+            "cricket" => Self::Cricket,
+            "metropcs" => Self::MetroPCS,
+            "tracfone" => Self::Tracfone,
+            "uscellular" => Self::USCellular,
+            "virgin" => Self::VirginMobile,
+            _ => Self::Other { domain: s.to_string() },
+        })
+    }
+}
+
+/// A phone number and
 /// mobile carrier pair
 /// for sending a text
 /// message
@@ -198,10 +231,7 @@ impl Destination {
     /// will have all not decimal digits
     /// stripped from it (It is not validated in any way).
     pub fn new(number: &str, carrier: Carrier) -> Self {
-        let number = number
-            .chars()
-            .filter(|c| c.is_digit(10))
-            .collect();
+        let number = number.chars().filter(|c| c.is_digit(10)).collect();
         Self { number, carrier }
     }
 

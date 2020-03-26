@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 lettre = "0.9"
 chrono = "0.4"
+clap = { git = "https://github.com/clap-rs/clap/" }
+serde = { version = "1", features = ["derive"] }

@@ -53,3 +53,13 @@ fn send_update(new: &str, old: &str) {
     .expect("failed to send notification");
 }
 ```
+# Some Details
+The email portion is built on top of [`lettre`](https://crates.io/crates/lettre) and there are 3
+options for the sender
+
+- File: This takes a file path and will write the email to a file on the file system as json using the message ID (the RFC 2822 time stamp) as the file name
+- Sendmail: This uses the `sendmail` cli tool for sending an email
+- SMTP: This uses the Simple Mail Transport Protocol there are 3 methods for this
+  - Unencrypted Localhost, this is by far the simplest, but least secure
+  - Simple, this you provide a domain (as an `&str`) and it will use TLS to send the message
+  - Full, this 
