@@ -15,43 +15,71 @@ You could build yourself a little web scraper that would keep track of your curr
 you could send the updated status to your phone by emailing the above.
 
 ```rust
+use cheap_alerts::{Carrier, Destination, Sender};
+use std::sync::atomic::{AtomicU8, Ordering};
+
+static STATUS: AtomicU8 = AtomicU8::new(0);
 
 fn main() {
-  let mut current = None;
-  loop {
-    match check_for_pizza_status() {
-      Some(status) => {
-        if let Some(prev) = current {
-          if prev != status {
-            send_update(&status, &prev);
-            current = Some(status);
-          }
-        } else {
-          send_update(&status, "nothing");
-          current = Some(status);
+    let mut current: Option<String> = None;
+    loop {
+        match check_for_pizza_status() {
+            Some(status) => {
+                if let Some(prev) = &current {
+                    if prev != &status {
+                        send_update(&status, &prev);
+                        current = Some(status.to_string());
+                    }
+                } else {
+                    send_update(&status, "nothing");
+                    current = Some(status.to_string());
+                }
+            }
+            None => {
+                current = None;
+            }
         }
-      },
-      None => {
-        current = None;
-      }
+        std::thread::sleep(std::time::Duration::from_secs(1));
     }
-    std::thread::sleep(std::time::Duration::from_secs(60));
-  }
+}
+/// Fake web scraping
+fn check_for_pizza_status() -> Option<&'static str> {
+    let old = STATUS.fetch_add(1, Ordering::Relaxed);
+    if old > 4 {
+        STATUS.store(0, Ordering::Relaxed);
+        None
+    } else {
+        determine_status(&STATUS)
+    }
 }
 
-fn check_for_pizza_status() -> Option<String> {
-  // Look at me, I'm web scraping!
+fn determine_status(val: &AtomicU8) -> Option<&'static str> {
+    match val.load(Ordering::Relaxed) {
+        1 => Some("Pending"),
+        2 => Some("Cooking"),
+        3 => Some("On the way"),
+        4 => Some("Complete"),
+        _ => None,
+    }
 }
 
 fn send_update(new: &str, old: &str) {
-  let mut sender = Sender::builder()
-                .address("junk@example.com")
-                .smtp_unencrypted_localhost()
-                .expect("failed to create sender");
-  
-  sender.send_to("6125550111@vtext.com", &format!("🍕🍕🍕🍕🍕🍕🍕🍕\nPizza Update: {} -> {}\n🍕🍕🍕🍕🍕🍕🍕🍕", old, new)
-    .expect("failed to send notification");
+    let mut sender = Sender::builder()
+        .address("junk@example.com")
+        .stdout()
+        .expect("failed to create sender");
+    let dest = Destination::new("6125550111", &Carrier::Verizon);
+    sender
+        .send_to(
+            &dest,
+            &format!(
+                "🍕🍕🍕🍕🍕🍕🍕🍕\nPizza Update: {} -> {}\n🍕🍕🍕🍕🍕🍕🍕🍕\n===========\n",
+                old, new
+            ),
+        )
+        .expect("failed to send notification");
 }
+
 ```
 # Some Details
 The email portion is built on top of [`lettre`](https://crates.io/crates/lettre) and there are 3
