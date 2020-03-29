@@ -1,16 +1,16 @@
 use cheap_alerts::{Carrier, Destination, Error, Sender};
-use clap::Clap;
+use structopt::StructOpt;
 
-#[derive(Clap, Debug)]
-#[clap(version = "0.1", author = "FreeMasen")]
+#[derive(StructOpt, Debug)]
+#[structopt(version = "0.1", author = "FreeMasen")]
 pub struct Opts {
-    #[clap(short = "c", long = "carrier")]
+    #[structopt(short = "c", long = "carrier")]
     pub carrier: Carrier,
-    #[clap(short = "n", long = "number")]
+    #[structopt(short = "n", long = "number")]
     pub number: String,
-    #[clap(short = "d", long = "domain")]
+    #[structopt(short = "d", long = "domain")]
     pub domain: Option<String>,
-    #[clap(short = "f", long = "from")]
+    #[structopt(short = "f", long = "from")]
     pub from: String,
     pub message: String,
 }
