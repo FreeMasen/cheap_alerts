@@ -11,3 +11,7 @@ lettre = "0.9"
 chrono = "0.4"
 clap = { git = "https://github.com/clap-rs/clap/" }
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+reqwest = { version = "0.10", features = ["blocking", "json"] }
+serde_json = "1"

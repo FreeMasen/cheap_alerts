@@ -4,10 +4,8 @@ mod cli;
 
 fn main() {
     let opts = cli::Opts::parse();
-    let _ = cli::send_message(&opts)
-        .map_err(|e| {
-            eprintln!("{}", e);
-            std::process::exit(1)
-        });
+    let _ = cli::send_message(&opts).map_err(|e| {
+        eprintln!("{}", e);
+        std::process::exit(1)
+    });
 }
-

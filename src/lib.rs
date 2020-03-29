@@ -12,12 +12,15 @@ use lettre::{
 pub use lettre::smtp::{client::net::ClientTlsParameters, ClientSecurity, SmtpClient};
 use std::net::ToSocketAddrs;
 
+mod echo_transport;
+
 #[derive(Debug)]
 pub enum Error {
     Lettre(lettre::error::Error),
     LettreFile(lettre::file::error::Error),
     LettreSendMail(lettre::sendmail::error::Error),
     LettreSmtp(lettre::smtp::error::Error),
+    Io(std::io::Error),
     MissingEmail,
 }
 
@@ -28,6 +31,7 @@ impl std::fmt::Display for Error {
             Error::LettreFile(i) => i.fmt(f),
             Error::LettreSendMail(i) => i.fmt(f),
             Error::LettreSmtp(i) => i.fmt(f),
+            Error::Io(i) => i.fmt(f),
             Error::MissingEmail => write!(f, "Error, email address to build a Sender"),
         }
     }
@@ -56,6 +60,12 @@ impl From<lettre::sendmail::error::Error> for Error {
 impl From<lettre::smtp::error::Error> for Error {
     fn from(other: lettre::smtp::error::Error) -> Self {
         Self::LettreSmtp(other)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(other: std::io::Error) -> Self {
+        Self::Io(other)
     }
 }
 
@@ -127,6 +137,15 @@ impl SenderBuilder {
     /// see [the lettre documentation to learn more](https://docs.rs/lettre/0.9.2/lettre/smtp/struct.SmtpClient.html)
     pub fn smtp<'a>(self, smtp: SmtpClient) -> Result<Sender<'a, SmtpResult>, Error> {
         let client = Box::new(SmtpTransport::new(smtp));
+        if let Some(address) = self.address {
+            Ok(Sender { address, client })
+        } else {
+            Err(Error::MissingEmail)
+        }
+    }
+
+    pub fn stdout<'a>(self) -> Result<Sender<'a, std::io::Result<()>>, Error> {
+        let client = Box::new(echo_transport::EchoTransport);
         if let Some(address) = self.address {
             Ok(Sender { address, client })
         } else {
@@ -211,7 +230,9 @@ impl std::str::FromStr for Carrier {
             "tracfone" => Self::Tracfone,
             "uscellular" => Self::USCellular,
             "virgin" => Self::VirginMobile,
-            _ => Self::Other { domain: s.to_string() },
+            _ => Self::Other {
+                domain: s.to_string(),
+            },
         })
     }
 }
@@ -234,7 +255,10 @@ impl Destination {
     /// stripped from it (It is not validated in any way).
     pub fn new(number: &str, carrier: &Carrier) -> Self {
         let number = number.chars().filter(|c| c.is_digit(10)).collect();
-        Self { number, carrier: carrier.clone() }
+        Self {
+            number,
+            carrier: carrier.clone(),
+        }
     }
 
     pub fn address(&self) -> String {

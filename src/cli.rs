@@ -1,7 +1,5 @@
-
-
+use cheap_alerts::{Carrier, Destination, Error, Sender};
 use clap::Clap;
-use cheap_alerts::{Carrier, Sender, Error, Destination};
 
 #[derive(Clap, Debug)]
 #[clap(version = "0.1", author = "FreeMasen")]
@@ -18,8 +16,7 @@ pub struct Opts {
 }
 
 pub fn send_message(opts: &Opts) -> Result<(), Error> {
-    let builder = Sender::builder()
-        .address(&opts.from);
+    let builder = Sender::builder().address(&opts.from);
     let mut sender = if let Some(domain) = &opts.domain {
         builder.smtp_simple(domain)?
     } else {
